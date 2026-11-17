@@ -156,6 +156,7 @@ def set_ks(key, value):
 def screen_groups():
     while True:
         ks = api("/api/kuaishou", timeout=15)
+        cfg = api("/api/config", timeout=15)
         c = menu("群聊与回复", [
             (f"自动回复：{onoff(ks.get('enabled'))}", "toggle_enabled"),
             (f"读消息方式：{'界面' if ks.get('source') == 'ui' else '数据库'}", "source"),
@@ -163,11 +164,14 @@ def screen_groups():
             (f"群聊列表：{', '.join(ks.get('groups') or []) or '（未设置）'}", "groups"),
             (f"@ 前缀：{ks.get('prefix') or '（无，任何消息都回）'}", "prefix"),
             (f"识别视频/图片/表情：{onoff(ks.get('stickers'))}", "toggle_stickers"),
+            (f"自动下载并看视频：{onoff(ks.get('auto_video'))}", "toggle_auto_video"),
+            (f"视频/图片上限：{cfg.get('max_file_mb')} MB（超过先压缩）", "max_mb"),
             (f"自动分享视频：{onoff(ks.get('share_link'))}", "toggle_share"),
             (f"分享间隔：{ks.get('share_min')} 分钟 / 每次 {ks.get('share_count')} 条", "share_tune"),
             (f"自动发感想：{onoff(ks.get('think_on'))}", "toggle_think"),
             (f"感想间隔：{ks.get('think_min')} 分钟", "think_min"),
             (f"闲聊间隔：{ks.get('idle_min')} 分钟（0=关）", "idle"),
+            (f"接管通知语：{ks.get('notice') or '（空，不发）'}", "notice"),
         ])
         if c is None:
             return
@@ -185,6 +189,11 @@ def screen_groups():
                 set_ks("ks_prefix", ask("回复前缀（留空=任何消息都回）", ks.get("prefix") or ""))
             elif c == "toggle_stickers":
                 set_ks("ks_stickers", not ks.get("stickers"))
+            elif c == "toggle_auto_video":
+                set_ks("ks_auto_video", not ks.get("auto_video"))
+            elif c == "max_mb":
+                api("/api/config", {"max_file_mb": int(ask("视频/图片上限（MB）",
+                                                         str(cfg.get("max_file_mb"))))})
             elif c == "toggle_share":
                 set_ks("ks_share_link", not ks.get("share_link"))
             elif c == "share_tune":
@@ -196,6 +205,8 @@ def screen_groups():
                 set_ks("ks_think_min", int(ask("感想间隔（分钟，0=关）", str(ks.get("think_min")))))
             elif c == "idle":
                 set_ks("ks_idle_min", int(ask("闲聊间隔（分钟，0=关）", str(ks.get("idle_min")))))
+            elif c == "notice":
+                set_ks("ks_notice", ask("接管时发到群里的一句话（留空=不发）", ks.get("notice") or ""))
         except ValueError:
             pause("请输入数字")
         except Exception as e:

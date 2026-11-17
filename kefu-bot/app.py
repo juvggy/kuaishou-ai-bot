@@ -67,15 +67,15 @@ DEFAULTS = {
     "ks_stickers": False,
     "ks_notice": "",
     "ks_tools": True,
-    "ks_idle_min": 25,
-    "ks_share_link": True,
+    "ks_idle_min": 0,
+    "ks_share_link": False,
     "ks_share_min": 8,
     "ks_share_count": 2,
     "ks_think_min": 30,
-    "ks_think_on": True,
+    "ks_think_on": False,
     "ks_think_prompt": "用一句口语化的感想说说你自己对这件事的看法，不超过 30 字，只输出这一句。",
     "ks_source": "ui",
-    "ks_auto_video": True,
+    "ks_auto_video": False,
     "system_prompt": "你在一个快手同学群里聊天，你就是个普通同学，不是客服、不是助手、不是AI。"
                      "说话短、口语、随意，像微信聊天：一条一般 5~20 个字，能一句话说完就不写两句。"
                      "不要长篇大论，不要分点列条，不要书面语，不要说“作为AI/我理解/希望对你有帮助/以上”。"
@@ -1559,7 +1559,8 @@ class Handler(BaseHTTPRequestHandler):
                 allow = {"ks_enabled", "ks_bridge", "ks_groups", "ks_prefix", "ks_poll",
                          "ks_stickers", "ks_notice", "ks_tools", "ks_source",
                          "ks_share_link", "ks_share_min", "ks_share_count",
-                         "ks_think_min", "ks_think_on", "ks_think_prompt", "ks_idle_min"}
+                         "ks_think_min", "ks_think_on", "ks_think_prompt", "ks_idle_min",
+                         "ks_auto_video"}
                 cfg = save_cfg({k: v for k, v in patch.items() if k in allow})
                 return self._json({"ok": True, **ks_conf(cfg)})
             if u.path == "/api/plugins":
