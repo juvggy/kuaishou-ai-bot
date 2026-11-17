@@ -1,0 +1,18 @@
+# 运行时数据、密钥、缓存
+__pycache__/
+*.pyc
+*.pyo
+
+# 聊天记录 / 会话 / 状态（含个人隐私）
+data/
+media/
+frames/
+*.log
+
+# 配置文件含 API Key，别提交；用 config.example.json 复制一份
+config.json
+.env
+
+# 备份
+ks_backup_*
+*.tgz
