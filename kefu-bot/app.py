@@ -59,7 +59,7 @@ DEFAULTS = {
     "summary_model": "glm-4-flash",
     "max_frames": 8,
     "port": 8800,
-    "ks_enabled": False,
+    "ks_enabled": True,
     "ks_bridge": "http://127.0.0.1:8765",
     "ks_groups": [],
     "ks_prefix": "",
@@ -1399,6 +1399,16 @@ def toggle_plugin(name, enabled):
     st = _plugin_state()
     st.setdefault(name, {})["enabled"] = bool(enabled)
     _save_plugin_state(st)
+    if enabled:
+        def _boot():
+            try:
+                mod = _load_plugin(name)
+                fn = getattr(mod, "on_start", None)
+                if callable(fn):
+                    fn(plugin_ctx(name))
+            except Exception as e:
+                print(f"[插件] {name} on_start 出错: {e}")
+        threading.Thread(target=_boot, daemon=True).start()
     return st[name]["enabled"]
 
 

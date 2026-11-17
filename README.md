@@ -10,6 +10,7 @@ kuaishou-ai-bot/
 ├─ kefu-bot/            平台：HTTP 服务 + 调度 + 大模型 + TUI
 │  ├─ app.py            后端（默认 127.0.0.1:8800）
 │  ├─ tui.py            命令行界面（方向键选菜单）
+│  ├─ launcher.py       exe 打包入口：三个服务跑在同一进程
 │  ├─ start.bat         启动后端并进入 TUI
 │  ├─ config.example.json  配置样例（复制成 config.json 再填 Key）
 │  └─ plugins/          插件目录，放 .py 文件即生效
@@ -50,11 +51,7 @@ kuaishou-ai-bot/
 
 ## 方式二：从源码运行
 
-1. 安装依赖：
-
-   ```bat
-   pip install requests
-   ```
+1. 无需安装第三方库（全部标准库），确认 Python 3.10+ 即可。
 
 2. 把本目录放到任意位置，进入 `kefu-bot`，把配置样例复制一份：
 
@@ -138,8 +135,7 @@ pyinstaller --onefile --console --name KuaishouBot ^
 | `COMMANDS = {"天气": fn}` | 群消息以指令开头时（`天气 北京`） | 回复文本，空则继续 |
 | `handle(text, ctx)` | 每条新消息 | 回复文本；空 = 交给下一个插件 / 大模型 |
 | `on_before_send(group, text, ctx)` | 机器人每次发消息前 | `None` 不改 / 字符串替换 / `False` 拦截 |
-| `on_start(ctx)` | 启动、或插件被启用时 | 无 |
-| `on_stop(ctx)` | 进程退出时 | 无 |
+| `on_start(ctx)` | 启动、或插件被启用时 | 无 || `on_stop(ctx)` | 进程退出时 | 无 |
 
 模块级常量：`DESC`（一句话说明，TUI 里显示）、`AUTHOR`（可选）。
 
