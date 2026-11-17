@@ -76,22 +76,39 @@ ADB = find_adb()
 class Device:
     def __init__(self, serial=None):
         self.serial = serial or self._pick_serial()
+        self.root = False
         self._ensure_root()
         self.w, self.h = self._screen_size()
 
     def _ensure_root(self):
-        """读快手数据库要 root；已是 root 就跳过，避免 adb root 把连接踢掉。"""
-        try:
-            out = self._raw(["shell", "id"], timeout=30).stdout.decode("utf-8", "replace")
-            if "uid=0" in out:
-                return
-            self._raw(["root"], timeout=30)
-            time.sleep(2)
-            if re.search(r":\d+$", self.serial or ""):
-                self._raw(["connect", self.serial], timeout=30)
-                time.sleep(1.5)
-        except Exception as e:
-            print("[device] adb root 失败:", e)
+        """尽量拿到 root：adb root → 重连 → 复查，最多 3 轮。"""
+        for i in range(3):
+            try:
+                out = self._raw(["shell", "id"], timeout=30).stdout.decode("utf-8", "replace")
+                if "uid=0" in out:
+                    self.root = True
+                    print("[device] 已获得 root 权限")
+                    return
+            except Exception as e:
+                print("[device] 检查 root 失败:", e)
+            if i == 0:
+                try:
+                    r = self._raw(["root"], timeout=30)
+                    msg = (r.stdout + r.stderr).decode("utf-8", "replace").strip()
+                    if msg:
+                        print("[device] adb root:", msg.splitlines()[0])
+                except Exception as e:
+                    print("[device] adb root 失败:", e)
+                time.sleep(2)
+                if re.search(r":\d+$", self.serial or ""):
+                    try:
+                        self._raw(["connect", self.serial], timeout=30)
+                    except Exception:
+                        pass
+                    time.sleep(1.5)
+            time.sleep(1)
+        print("[device] 未拿到 root：数据库读取/部分文件访问会失败。"
+              "请在模拟器设置里打开 root 权限并重启模拟器。")
 
     def _raw(self, args, timeout=90):
         cmd = [ADB] + (["-s", self.serial] if self.serial else []) + args
@@ -1314,6 +1331,7 @@ class Api:
 
     def status(self):
         return {"serial": self.dev.serial, "screen": f"{self.dev.w}x{self.dev.h}",
+                "root": bool(getattr(self.dev, "root", False)),
                 "adbkeyboard": kb_installed(self.dev.serial)}
 
     def groups(self):

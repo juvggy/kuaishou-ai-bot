@@ -125,6 +125,13 @@ def screen_status():
         print("运行状态")
         print("=" * 58)
         print(f"后端        127.0.0.1:8800")
+        try:
+            br = api("/api/ks/action", {"action": "status"}, timeout=8)
+            root_txt = ("已开启（%s）" % br.get("serial", "")) if br.get("root") \
+                else "未开启（界面模式够用；数据库模式需要）"
+        except Exception:
+            root_txt = "未知（桥没连上模拟器）"
+        print(f"Root 权限   {root_txt}")
         print(f"自动回复    {onoff(ks.get('enabled'))}")
         print(f"读消息方式  {'界面' if ks.get('source') == 'ui' else '数据库'}")
         print(f"轮询间隔    {ks.get('poll')} 秒")
