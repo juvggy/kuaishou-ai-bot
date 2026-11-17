@@ -241,7 +241,9 @@ def screen_plugins():
         for p in pls:
             state = "开" if p.get("enabled") else "关"
             desc = p.get("error") or p.get("desc") or "（无说明）"
-            items.append((f"[{state}] {p['name']}  {desc}", ("toggle", p["name"])))
+            cmds = p.get("commands") or []
+            extra = ("  指令：" + "/".join(cmds)) if cmds else ""
+            items.append((f"[{state}] {p['name']}  {desc}{extra}", ("toggle", p["name"])))
         if items:
             items.append(("-" * 40, ("noop", "")))
         items += [

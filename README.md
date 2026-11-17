@@ -75,9 +75,44 @@ kuaishou-ai-bot/
 ## 插件
 
 `kefu-bot/plugins/` 下每个 `.py` 就是一个插件，保存即生效，不用重启。
+插件是主进程里的原生 Python 模块，没有沙箱——可以 import 任何库、读写磁盘、发网络请求、
+改配置、直接调快手桥，所以能做到“什么都能改”。
+
+### 钩子
+
+按需实现，全部可省略：
+
+| 钩子 | 何时调用 | 返回值 |
+| --- | --- | --- |
+| `COMMANDS = {"天气": fn}` | 群消息以指令开头时（`天气 北京`） | 回复文本，空则继续 |
+| `handle(text, ctx)` | 每条新消息 | 回复文本；空 = 交给下一个插件 / 大模型 |
+| `on_before_send(group, text, ctx)` | 机器人每次发消息前 | `None` 不改 / 字符串替换 / `False` 拦截 |
+| `on_start(ctx)` | 启动、或插件被启用时 | 无 |
+| `on_stop(ctx)` | 进程退出时 | 无 |
+
+模块级常量：`DESC`（一句话说明，TUI 里显示）、`AUTHOR`（可选）。
+
+### 插件 API
+
+`ctx["api"]` 是给插件的工具箱：
+
+| 方法 | 作用 |
+| --- | --- |
+| `api.send(text, group=None)` | 往群里发消息（默认当前群） |
+| `api.read(group=None, n=20)` | 读群里最新消息 |
+| `api.cfg()` / `api.save_cfg(patch)` | 读/改机器人配置 |
+| `api.http(url, data=None, headers=None)` | 发 HTTP 请求，返回 JSON |
+| `api.every(秒, fn)` | 注册定时任务，`fn(api)` |
+| `api.state` / `api.save()` | 插件自己的持久化字典（存 `data/plugin_state/`） |
+| `api.log(...)` | 打日志 |
+
+`ctx` 里还有 `group`（当前群名）和 `cfg`（当前配置快照）。
+
+### 例子
 
 ```python
 DESC = "群里发 ping 就回 pong"
+
 
 def handle(text, ctx):
     if (text or "").strip().lower() == "ping":
@@ -85,8 +120,8 @@ def handle(text, ctx):
     return ""              # 返回空 = 交给大模型
 ```
 
-`ctx` 里有 `group`（当前群名）和 `cfg`（当前配置字典）。
-插件按文件名顺序执行，谁先返回内容谁生效。插件抛异常只记日志，不影响主流程。
+更多示例见 `plugins/example_tools.py`（指令、定时、发送前改写、计数持久化）。
+插件按文件名顺序执行，谁先返回内容谁生效；插件抛异常只记日志，不影响主流程。
 
 ## 配置说明（config.json）
 

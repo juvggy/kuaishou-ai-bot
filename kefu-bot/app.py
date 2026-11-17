@@ -3,6 +3,7 @@
 只用标准库，依赖 ffmpeg（已在 PATH 中）。
 运行：python app.py   然后浏览器打开 http://127.0.0.1:8800
 """
+import atexit
 import base64
 import cgi
 import json
@@ -841,6 +842,8 @@ def ks_say(g, text):
         clean = ""
     sent = False
     if clean:
+        clean = plugin_before_send(g, clean)
+    if clean:
         try:
             ks_call((cfg.get("ks_bridge") or "").rstrip("/") + "/send", {"group": g, "text": clean})
             sent = True
@@ -1197,6 +1200,120 @@ def _load_plugin(name):
     return mod
 
 
+PLUGIN_TIMERS = []      # [(插件名, 间隔秒, 函数, 下次时间)]
+PLUGIN_STATES = {}      # 插件名 -> 持久化字典
+
+
+class PluginAPI:
+    """插件能用的工具箱：发消息、读消息、配置、HTTP、定时、持久化。"""
+
+    def __init__(self, name, group=""):
+        self.name = name
+        self.group = group
+
+    def log(self, *args):
+        print(f"[插件:{self.name}]", *args)
+
+    def send(self, text, group=None):
+        cfg = load_cfg()
+        bridge = (cfg.get("ks_bridge") or "http://127.0.0.1:8765").rstrip("/")
+        return ks_call(bridge + "/send", {"group": group or self.group, "text": text}, timeout=120)
+
+    def read(self, group=None, n=20):
+        cfg = load_cfg()
+        bridge = (cfg.get("ks_bridge") or "http://127.0.0.1:8765").rstrip("/")
+        return ks_call(bridge + "/read", {"group": group or self.group, "n": int(n)}, timeout=120)
+
+    def cfg(self):
+        return load_cfg()
+
+    def save_cfg(self, patch):
+        return save_cfg(patch)
+
+    def http(self, url, data=None, headers=None, timeout=20, as_json=True):
+        body = None
+        hd = dict(headers or {})
+        if data is not None:
+            body = json.dumps(data, ensure_ascii=False).encode("utf-8")
+            hd.setdefault("Content-Type", "application/json")
+        req = urllib.request.Request(url, data=body, headers=hd,
+                                     method="POST" if body else "GET")
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            raw = r.read().decode("utf-8", "replace")
+        return json.loads(raw) if as_json else raw
+
+    @property
+    def state(self):
+        """插件自己的持久化字典，读写后调 save() 落盘。"""
+        if self.name not in PLUGIN_STATES:
+            p = os.path.join(DATA, "plugin_state", self.name + ".json")
+            try:
+                with open(p, "r", encoding="utf-8") as f:
+                    PLUGIN_STATES[self.name] = json.load(f)
+            except Exception:
+                PLUGIN_STATES[self.name] = {}
+        return PLUGIN_STATES[self.name]
+
+    def save(self):
+        d = os.path.join(DATA, "plugin_state")
+        os.makedirs(d, exist_ok=True)
+        with open(os.path.join(d, self.name + ".json"), "w", encoding="utf-8") as f:
+            json.dump(self.state, f, ensure_ascii=False, indent=2)
+
+    def every(self, seconds, func):
+        """每 N 秒跑一次 func(api)。插件定时任务统一由后台线程调度。"""
+        sec = max(1.0, float(seconds))
+        PLUGIN_TIMERS.append([self.name, sec, func, time.time() + sec])
+
+
+def plugin_ctx(name, group=""):
+    return {"group": group, "cfg": load_cfg(), "api": PluginAPI(name, group)}
+
+
+def _enabled_plugins():
+    st = _plugin_state()
+    return [fn[:-3] for fn in _plugin_files()
+            if st.get(fn[:-3], {}).get("enabled", True)]
+
+
+def plugin_start_all():
+    for name in _enabled_plugins():
+        try:
+            mod = _load_plugin(name)
+            fn = getattr(mod, "on_start", None)
+            if callable(fn):
+                fn(plugin_ctx(name))
+        except Exception as e:
+            print(f"[插件] {name} on_start 出错: {e}")
+
+
+def plugin_stop_all():
+    for name in _enabled_plugins():
+        try:
+            mod = _load_plugin(name)
+            fn = getattr(mod, "on_stop", None)
+            if callable(fn):
+                fn(plugin_ctx(name))
+        except Exception as e:
+            print(f"[插件] {name} on_stop 出错: {e}")
+
+
+def plugin_ticker():
+    """后台线程：跑插件注册的定时任务。"""
+    while True:
+        time.sleep(1)
+        now = time.time()
+        for item in list(PLUGIN_TIMERS):
+            name, sec, fn, nxt = item
+            if now < nxt:
+                continue
+            item[3] = now + sec
+            try:
+                fn(PluginAPI(name))
+            except Exception as e:
+                print(f"[插件] {name} 定时任务出错: {e}")
+
+
 def list_plugins():
     st = _plugin_state()
     out = []
@@ -1208,8 +1325,11 @@ def list_plugins():
         try:
             mod = _load_plugin(name)
             meta["desc"] = getattr(mod, "DESC", "")
-            if not callable(getattr(mod, "handle", None)):
-                meta["error"] = "缺少 handle(text, ctx) 函数"
+            meta["commands"] = list((getattr(mod, "COMMANDS", None) or {}).keys())
+            meta["hooks"] = [h for h in ("handle", "on_before_send", "on_start", "on_tick", "on_stop")
+                             if callable(getattr(mod, h, None))]
+            if not meta["hooks"]:
+                meta["error"] = "没有可用的钩子函数"
         except Exception as e:
             meta["error"] = f"加载失败：{e}"
         out.append(meta)
@@ -1271,24 +1391,56 @@ def toggle_plugin(name, enabled):
 
 
 def plugin_reply(text, group):
-    """群里来消息时先过一遍插件；有插件接了就发它的话，否则交给模型。"""
+    """群里来消息时先过一遍插件：
+    先看插件注册的指令（COMMANDS，例如「天气 北京」），再看通用 handle。
+    谁返回了内容就由谁回复，返回空就继续交给下一个，都没有就交给模型。"""
     st = _plugin_state()
-    cfg = load_cfg()
+    t = (text or "").strip()
     for fn in _plugin_files():
         name = fn[:-3]
         if not st.get(name, {}).get("enabled", True):
             continue
         try:
             mod = _load_plugin(name)
+            ctx = plugin_ctx(name, group)
+            for key, func in (getattr(mod, "COMMANDS", None) or {}).items():
+                if t == key or t.startswith(key + " ") or t.startswith(key + "："):
+                    arg = t[len(key):].strip(" :：")
+                    out = func(arg, ctx)
+                    if isinstance(out, str) and out.strip():
+                        return out.strip(), name
             fn_handle = getattr(mod, "handle", None)
-            if not callable(fn_handle):
-                continue
-            out = fn_handle(text, {"group": group, "cfg": cfg})
-            if isinstance(out, str) and out.strip():
-                return out.strip(), name
+            if callable(fn_handle):
+                out = fn_handle(text, ctx)
+                if isinstance(out, str) and out.strip():
+                    return out.strip(), name
         except Exception as e:
             print(f"[插件] {name} 出错: {e}")
     return "", ""
+
+
+def plugin_before_send(group, text):
+    """发送前给插件一次改写机会：返回新文本替换，返回 False 拦截不发。"""
+    st = _plugin_state()
+    cur = text
+    for fn in _plugin_files():
+        name = fn[:-3]
+        if not st.get(name, {}).get("enabled", True):
+            continue
+        try:
+            mod = _load_plugin(name)
+            fn_hook = getattr(mod, "on_before_send", None)
+            if not callable(fn_hook):
+                continue
+            out = fn_hook(group, cur, plugin_ctx(name, group))
+            if out is None:
+                continue
+            if out is False:
+                return ""
+            cur = str(out)
+        except Exception as e:
+            print(f"[插件] {name} on_before_send 出错: {e}")
+    return cur
 
 
 # ---------------------------------------------------------------- HTTP
@@ -1593,6 +1745,9 @@ def main():
     port = int(cfg.get("port", 8800))
     ensure_bridge_async()
     reset_notices()
+    threading.Thread(target=plugin_ticker, daemon=True).start()
+    threading.Thread(target=plugin_start_all, daemon=True).start()
+    atexit.register(plugin_stop_all)
     threading.Thread(target=ks_loop, daemon=True).start()
     srv = ThreadingHTTPServer(("127.0.0.1", port), Handler)
     print(f"客服机器人已启动: http://127.0.0.1:{port}")
