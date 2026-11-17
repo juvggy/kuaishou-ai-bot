@@ -48,7 +48,7 @@ KB_APK = os.path.join(_MEIPASS, "ADBKeyboard.apk")
 MEDIA_DIR = os.path.join(BASE_DIR, "media")
 
 ADB_FALLBACKS = [
-    r"D:\22\platform-tools-latest-windows\platform-tools\adb.exe",
+    os.path.join(BASE_DIR, "platform-tools", "adb.exe"),   # 放在程序旁边的 adb
     r"C:\platform-tools\adb.exe",
     r"C:\Android\platform-tools\adb.exe",
 ]
