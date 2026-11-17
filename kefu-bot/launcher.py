@@ -25,7 +25,8 @@ def start_bridge():
     """模拟器没开就一直等，起来了自动接管。"""
     while True:
         try:
-            dev = kuaishou.Device()
+            serial = (app.load_cfg().get("ks_serial") or "").strip() or None
+            dev = kuaishou.Device(serial)
             print(f"[桥] 已连接 {dev.serial}  {dev.w}x{dev.h}")
             kuaishou.serve(dev, 8765)
             return

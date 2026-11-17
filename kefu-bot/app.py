@@ -64,6 +64,7 @@ DEFAULTS = {
     "ks_groups": [],
     "ks_prefix": "",
     "ks_poll": 8,
+    "ks_serial": "",
     "ks_stickers": False,
     "ks_notice": "",
     "ks_tools": True,
@@ -384,6 +385,7 @@ def ks_conf(cfg):
             "groups": cfg.get("ks_groups") or [],
             "prefix": cfg.get("ks_prefix") or "",
             "poll": int(cfg.get("ks_poll") or 8),
+            "serial": cfg.get("ks_serial") or "",
             "stickers": bool(cfg.get("ks_stickers")),
             "notice": cfg.get("ks_notice") or "",
             "tools": bool(cfg.get("ks_tools")),
@@ -1570,7 +1572,7 @@ class Handler(BaseHTTPRequestHandler):
                          "ks_stickers", "ks_notice", "ks_tools", "ks_source",
                          "ks_share_link", "ks_share_min", "ks_share_count",
                          "ks_think_min", "ks_think_on", "ks_think_prompt", "ks_idle_min",
-                         "ks_auto_video"}
+                         "ks_auto_video", "ks_serial"}
                 cfg = save_cfg({k: v for k, v in patch.items() if k in allow})
                 return self._json({"ok": True, **ks_conf(cfg)})
             if u.path == "/api/plugins":

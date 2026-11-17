@@ -71,6 +71,18 @@ def find_adb():
 
 ADB = find_adb()
 
+# 常见模拟器的 ADB 端口：没出现在 adb devices 里就主动连一下
+EMU_PORTS = ["127.0.0.1:16384", "127.0.0.1:7555", "127.0.0.1:21503",
+             "127.0.0.1:5555", "127.0.0.1:5554", "127.0.0.1:62001"]
+
+
+def _connect_emulators():
+    for p in EMU_PORTS:
+        try:
+            subprocess.run([ADB, "connect", p], capture_output=True, timeout=5)
+        except Exception:
+            pass
+
 
 # ---------------------------------------------------------------- 设备层
 class Device:
@@ -154,14 +166,17 @@ class Device:
 
     @staticmethod
     def _pick_serial():
-        for _ in range(10):
+        _connect_emulators()
+        for i in range(10):
             r = subprocess.run([ADB, "devices"], capture_output=True, timeout=20)
             for line in r.stdout.decode("utf-8", "replace").splitlines()[1:]:
                 p = line.split()
                 if len(p) >= 2 and p[1] == "device":
                     return p[0]
+            if i % 3 == 2:
+                _connect_emulators()
             time.sleep(1)
-        raise SystemExit("没有检测到 ADB 设备")
+        raise SystemExit("没有检测到 ADB 设备：请在模拟器设置里打开 ADB 调试（MuMu：设置 → 其他 → ADB 调试）")
 
     def _screen_size(self):
         m = re.search(r"(\d+)x(\d+)", self.shell("wm size"))

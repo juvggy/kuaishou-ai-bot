@@ -169,6 +169,7 @@ def screen_groups():
             (f"读消息方式：{'界面' if ks.get('source') == 'ui' else '数据库'}", "source"),
             (f"轮询间隔：{ks.get('poll')} 秒", "poll"),
             (f"群聊列表：{', '.join(ks.get('groups') or []) or '（未设置）'}", "groups"),
+            (f"设备序列号：{ks.get('serial') or '（自动选第一个）'}", "serial"),
             (f"@ 前缀：{ks.get('prefix') or '（无，任何消息都回）'}", "prefix"),
             (f"识别视频/图片/表情：{onoff(ks.get('stickers'))}", "toggle_stickers"),
             (f"自动下载并看视频：{onoff(ks.get('auto_video'))}", "toggle_auto_video"),
@@ -192,6 +193,10 @@ def screen_groups():
             elif c == "groups":
                 v = ask("群聊名称，多个用英文逗号隔开", ",".join(ks.get("groups") or []))
                 set_ks("ks_groups", [x.strip() for x in v.split(",") if x.strip()])
+            elif c == "serial":
+                v = ask("设备序列号（留空=自动，例如 127.0.0.1:7555）", ks.get("serial") or "")
+                set_ks("ks_serial", v.strip())
+                pause("已保存，重启程序后生效")
             elif c == "prefix":
                 set_ks("ks_prefix", ask("回复前缀（留空=任何消息都回）", ks.get("prefix") or ""))
             elif c == "toggle_stickers":
