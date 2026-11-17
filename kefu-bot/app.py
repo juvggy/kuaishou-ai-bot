@@ -11,6 +11,7 @@ import mimetypes
 import os
 import random
 import re
+import shutil
 import subprocess
 import sys
 import threading
@@ -26,7 +27,10 @@ try:
 except Exception:
     pass
 
-ROOT = os.path.dirname(os.path.abspath(__file__))
+FROZEN = getattr(sys, "frozen", False)
+# 打包成 exe 后，配置/数据/插件都放在 exe 旁边，而不是临时解包目录
+ROOT = os.path.dirname(sys.executable) if FROZEN else os.path.dirname(os.path.abspath(__file__))
+BUNDLE = getattr(sys, "_MEIPASS", ROOT)
 DATA = os.path.join(ROOT, "data")
 CONV_DIR = os.path.join(DATA, "conversations")
 UP_DIR = os.path.join(DATA, "uploads")
@@ -44,14 +48,14 @@ for d in (DATA, CONV_DIR, UP_DIR):
 DEFAULTS = {
     "base_url": "https://open.bigmodel.cn/api/paas/v4",
     "api_key": "",
-    "model": "glm-4v-flash",
-    "vision_model": "glm-4v-flash",
+    "model": "glm-4-flash",
+    "vision_model": "glm-4-flash",
     "max_file_mb": 200,
     "video_inline_seconds": 3600,
     "keep_recent_messages": 16,
     "summarize_after": 24,
-    "full_context": False,
-    "context_mode": "retrieval",
+    "full_context": True,
+    "context_mode": "full",
     "summary_model": "glm-4-flash",
     "max_frames": 8,
     "port": 8800,
@@ -1162,6 +1166,14 @@ def ks_loop():
 PLUGIN_DIR = os.path.join(ROOT, "plugins")
 PLUGIN_STATE = os.path.join(DATA, "plugins.json")
 os.makedirs(PLUGIN_DIR, exist_ok=True)
+if FROZEN:
+    # 首次运行把 exe 里自带的示例插件放到外面，方便用户编辑
+    _seed = os.path.join(BUNDLE, "plugins")
+    if os.path.isdir(_seed):
+        for _n in os.listdir(_seed):
+            _dst = os.path.join(PLUGIN_DIR, _n)
+            if _n.endswith(".py") and not os.path.exists(_dst):
+                shutil.copy2(os.path.join(_seed, _n), _dst)
 PLUGIN_MODS = {}
 
 
@@ -1692,6 +1704,8 @@ def reset_notices():
 
 def ensure_bridge():
     """桥不单独开窗口：由平台拉起，跟着平台一起活、一起关。"""
+    if os.environ.get("KS_EMBEDDED") == "1":
+        return  # 单文件 exe：桥和平台在同一个进程里
     cfg = load_cfg()
     bridge = (cfg.get("ks_bridge") or "http://127.0.0.1:8765").rstrip("/")
     import socket
